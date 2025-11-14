@@ -2,11 +2,7 @@
 resolver = "2"
 
 members = [
-  "libDF",
-  "pyDF",
-  "pyDF-data",
-  "ladspa",
-  "demo",
+  "libDF"
 ]
 
 [profile.dev]

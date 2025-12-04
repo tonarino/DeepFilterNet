@@ -13,6 +13,7 @@ rust-version = "1.91"
 anyhow = "1"
 flate2 = "1"
 itertools = "0.10"
+lazy_static = "1.4"
 log = { version = "0.4", features = ["std"] }
 
 ndarray = "^0.16"

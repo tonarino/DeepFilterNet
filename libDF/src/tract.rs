@@ -18,6 +18,10 @@ use tract_core::{
 use tract_onnx::{prelude::*, tract_hir::shapefactoid};
 use tract_pulse::{internal::ToDim, model::*};
 
+lazy_static::lazy_static! {
+    static ref ONNX: tract_onnx::Onnx = tract_onnx::onnx().with_ignore_output_shapes(true);
+}
+
 #[derive(Clone)]
 pub struct DfParams {
     config: Ini,
@@ -749,7 +753,7 @@ fn init_encoder_from_read(
     df_cfg: &ini::Properties,
     n_ch: usize,
 ) -> Result<TypedModel> {
-    let m = tract_onnx::onnx().with_ignore_output_shapes(true).model_for_read(m)?;
+    let m = ONNX.model_for_read(m)?;
     init_encoder_impl(m, df_cfg, n_ch)
 }
 
@@ -848,7 +852,7 @@ fn init_erb_decoder_from_read(
     n_ch: usize,
     mask_reduction: Option<ReduceMask>,
 ) -> Result<TypedModel> {
-    let m = tract_onnx::onnx().with_ignore_output_shapes(true).model_for_read(m)?;
+    let m = ONNX.model_for_read(m)?;
     init_erb_decoder_impl(m, net_cfg, df_cfg, n_ch, mask_reduction)
 }
 
@@ -892,7 +896,7 @@ fn init_df_decoder_from_read(
     df_cfg: &ini::Properties,
     n_ch: usize,
 ) -> Result<TypedModel> {
-    let m = tract_onnx::onnx().with_ignore_output_shapes(true).model_for_read(m)?;
+    let m = ONNX.model_for_read(m)?;
     init_df_decoder_impl(m, net_cfg, df_cfg, n_ch)
 }
 

@@ -2,7 +2,7 @@ use crate::DFState;
 use anyhow::{Context, Result};
 use flate2::read::GzDecoder;
 use ini::Ini;
-use ndarray::{prelude::*, Axis};
+use ndarray::{s, ArrayView2, ArrayView3, ArrayViewD, ArrayViewMut2, ArrayViewMutD, Axis, Ix2};
 use num_complex::Complex32;
 use std::{
     fs::File,
@@ -14,6 +14,7 @@ use tract_core::{
     internal::{tract_itertools::izip, tract_smallvec::alloc::collections::VecDeque},
     ops,
     prelude::*,
+    runtime::{runtime_for_name, State},
 };
 use tract_onnx::{prelude::*, tract_hir::shapefactoid};
 use tract_pulse::{internal::ToDim, model::*};
@@ -169,9 +170,8 @@ impl Default for RuntimeParams {
     }
 }
 
-pub type TractModel = TypedSimpleState<TypedModel, TypedSimplePlan<TypedModel>>;
+pub type TractModel = Box<dyn State>;
 
-#[derive(Clone)]
 pub struct DfTract {
     enc: TractModel,
     erb_dec: TractModel,
@@ -213,6 +213,7 @@ impl DfTract {
         let df_cfg = config.section(Some("df")).unwrap();
         let ch = rp.n_ch;
 
+        let runtime = runtime_for_name("cpu")?.context("cpu runtime not available")?;
         let enc = init_encoder_from_read(&mut Cursor::new(dfp.enc), df_cfg, ch)?;
         let erb_dec = init_erb_decoder_from_read(
             &mut Cursor::new(dfp.erb_dec),
@@ -223,9 +224,9 @@ impl DfTract {
         )?;
         let df_dec =
             init_df_decoder_from_read(&mut Cursor::new(dfp.df_dec), model_cfg, df_cfg, ch)?;
-        let enc = SimpleState::new(enc.into_runnable()?)?;
-        let erb_dec = SimpleState::new(erb_dec.into_runnable()?)?;
-        let df_dec = SimpleState::new(df_dec.into_runnable()?)?;
+        let enc: TractModel = runtime.prepare(enc)?.spawn()?;
+        let erb_dec: TractModel = runtime.prepare(erb_dec)?.spawn()?;
+        let df_dec: TractModel = runtime.prepare(df_dec)?.spawn()?;
 
         let sr = df_cfg.get("sr").unwrap().parse::<usize>()?;
         let hop_size = df_cfg.get("hop_size").unwrap().parse::<usize>()?;
@@ -388,13 +389,15 @@ impl DfTract {
     ///     - gains: Gain estimates of shape `[n_ch, 1, 1, n_erb]`.
     ///     - coefs: Real-valued DF coefficients estimates of shape `[n_ch, 1, 1, n_erb, 2]`.
     pub fn process_raw(&mut self) -> Result<(f32, Option<Tensor>, Option<Tensor>)> {
-        let spec = self.spec_buf.to_array_view()?;
+        let spec = self.spec_buf.to_plain_array_view()?;
         let ch = spec.len_of(Axis(0));
 
+        let mut erb_view = tvalue_to_array_view_mut(&mut self.erb_buf);
+        let mut cplx_view = tvalue_to_array_view_mut(&mut self.cplx_buf);
         for (nsy_ch, mut erb_ch, mut cplx_ch, state) in izip!(
             spec.axis_iter(Axis(0)),
-            tvalue_to_array_view_mut(&mut self.erb_buf).axis_iter_mut(Axis(0)),
-            tvalue_to_array_view_mut(&mut self.cplx_buf).axis_iter_mut(Axis(0)),
+            erb_view.axis_iter_mut(Axis(0)),
+            cplx_view.axis_iter_mut(Axis(0)),
             self.df_states.iter_mut()
         ) {
             let nsy_ch = as_slice_complex(nsy_ch.as_slice().unwrap());
@@ -412,7 +415,11 @@ impl DfTract {
         ))?;
 
         // Note: This will fail if multiple channels are passed in.
-        let &lsnr = enc_emb.pop().unwrap().to_scalar::<f32>()?;
+        let lsnr_t = enc_emb.pop().unwrap();
+        let lsnr = lsnr_t
+            .into_tensor()
+            .to_plain_array_view::<f32>()
+            .unwrap()[[0, 0, 0]];
         let c0 = enc_emb.pop().unwrap();
         let emb = enc_emb.pop().unwrap();
 
@@ -474,9 +481,10 @@ impl DfTract {
         // Signal model: y = f(s + n) = f(x)
         self.rolling_spec_buf_y.pop_front();
         self.rolling_spec_buf_x.pop_front();
+        let mut spec_buf_view = self.spec_buf.to_plain_array_view_mut()?;
         for (ns_ch, mut rbuf, state) in izip!(
             noisy.axis_iter(Axis(0)),
-            self.spec_buf.to_array_view_mut()?.axis_iter_mut(Axis(0)),
+            spec_buf_view.axis_iter_mut(Axis(0)),
             self.df_states.iter_mut(),
         ) {
             let spec = as_slice_mut_complex(rbuf.as_slice_mut().unwrap());
@@ -492,10 +500,13 @@ impl DfTract {
         let (lsnr, gains, coefs) = self.process_raw()?;
 
         let (apply_erb, _, _) = self.apply_stages(lsnr);
-        let mut spec =
-            self.rolling_spec_buf_y.get_mut(self.df_order - 1).unwrap().to_array_view_mut()?;
+        let mut spec = self
+            .rolling_spec_buf_y
+            .get_mut(self.df_order - 1)
+            .unwrap()
+            .to_plain_array_view_mut()?;
         if let Some(gains) = gains {
-            let mut gains = gains.into_array()?;
+            let mut gains = gains.into_plain_array()?;
             if gains.shape()[0] < noisy.shape()[0] {
                 // Mask was reduced to single channel
                 let gain_slc = gains.as_slice_mut().unwrap();
@@ -541,14 +552,14 @@ impl DfTract {
             self.rolling_spec_buf_x
                 .get(self.lookahead.max(self.df_order) - self.lookahead - 1)
                 .unwrap()
-                .to_array_view::<f32>()
+                .to_plain_array_view::<f32>()
                 .unwrap(),
             &[self.ch, self.n_freqs],
         )
         .into_dimensionality::<Ix2>()
         .unwrap();
         let mut spec_enh = as_arrayview_mut_complex(
-            self.spec_buf.to_array_view_mut::<f32>().unwrap(),
+            self.spec_buf.to_plain_array_view_mut::<f32>().unwrap(),
             &[self.ch, self.n_freqs],
         )
         .into_dimensionality::<Ix2>()
@@ -614,7 +625,7 @@ impl DfTract {
 
     pub fn set_spec_buffer(&mut self, spec: ArrayView2<f32>) -> Result<()> {
         debug_assert_eq!(self.spec_buf.shape(), spec.shape());
-        let view = self.spec_buf.to_array_view_mut()?;
+        let view = self.spec_buf.to_plain_array_view_mut()?;
         let mut buf = view.to_shape([self.ch, self.n_freqs])?;
         for (i_ch, mut b_ch) in spec.outer_iter().zip(buf.outer_iter_mut()) {
             for (&i, b) in i_ch.iter().zip(b_ch.iter_mut()) {
@@ -629,7 +640,7 @@ impl DfTract {
             self.rolling_spec_buf_x
                 .get(self.lookahead.max(self.df_order) - self.lookahead - 1)
                 .unwrap()
-                .to_array_view::<f32>()
+                .to_plain_array_view::<f32>()
                 .unwrap(),
             &[self.ch, self.n_freqs],
         )
@@ -639,7 +650,7 @@ impl DfTract {
 
     pub fn get_spec_enh(&self) -> ArrayView2<'_, Complex32> {
         as_arrayview_complex(
-            self.spec_buf.to_array_view::<f32>().unwrap(),
+            self.spec_buf.to_plain_array_view::<f32>().unwrap(),
             &[self.ch, self.n_freqs],
         )
         .into_dimensionality::<Ix2>()
@@ -648,7 +659,7 @@ impl DfTract {
 
     pub fn get_mut_spec_enh(&mut self) -> ArrayViewMut2<'_, Complex32> {
         as_arrayview_mut_complex(
-            self.spec_buf.to_array_view_mut::<f32>().unwrap(),
+            self.spec_buf.to_plain_array_view_mut::<f32>().unwrap(),
             &[self.ch, self.n_freqs],
         )
         .into_dimensionality::<Ix2>()
@@ -682,16 +693,16 @@ fn df(
     debug_assert_eq!(ch, spec_out.shape()[0]);
     debug_assert!(spec.len() >= df_order);
     let mut o_f: ArrayViewMut2<Complex32> =
-        as_arrayview_mut_complex(spec_out.to_array_view_mut::<f32>()?, &[ch, n_freqs])
+        as_arrayview_mut_complex(spec_out.to_plain_array_view_mut::<f32>()?, &[ch, n_freqs])
             .into_dimensionality()?;
     // Zero relevant frequency bins of output
     o_f.slice_mut(s![.., ..nb_df]).fill(Complex32::default());
     let coefs_arr: ArrayView3<Complex32> =
-        as_arrayview_complex(coefs.to_array_view::<f32>()?, &[ch, nb_df, df_order])
+        as_arrayview_complex(coefs.to_plain_array_view::<f32>()?, &[ch, nb_df, df_order])
             .into_dimensionality()?;
     // Transform spec to an complex array and iterate over time frames of spec and coefs
     let spec_iter = spec.iter().map(|s| {
-        as_arrayview_complex(s.to_array_view::<f32>().unwrap(), &[ch, n_freqs])
+        as_arrayview_complex(s.to_plain_array_view::<f32>().unwrap(), &[ch, n_freqs])
             .into_dimensionality::<Ix2>()
             .unwrap()
     });
@@ -732,7 +743,7 @@ fn init_encoder_impl(
         .with_input_fact(0, feat_erb)?
         .with_input_fact(1, feat_spec)?
         .with_input_names(["feat_erb", "feat_spec"])?
-        .with_output_names(["e0", "e1", "e2", "e3", "emb", "c0", "lsnr"])?;
+        .with_outputs_by_name(["e0", "e1", "e2", "e3", "emb", "c0", "lsnr"])?;
 
     m.analyse(true)?;
     let mut m = m.into_typed()?;
@@ -834,7 +845,7 @@ fn init_erb_decoder_impl(
             _ => (),
         }
     }
-    m = m.with_output_names(&[output_name])?;
+    m = m.with_outputs_by_name(&[output_name])?;
 
     let m = m.into_optimized()?;
 
@@ -874,7 +885,7 @@ fn init_df_decoder_impl(
         .with_input_fact(0, emb)?
         .with_input_fact(1, c0)?
         .with_input_names(["emb", "c0"])?
-        .with_output_names(["coefs"])?;
+        .with_outputs_by_name(["coefs"])?;
 
     m.analyse(true)?;
     let mut m = m.into_typed()?;
@@ -979,10 +990,10 @@ pub fn tvalue_to_array_view_mut(x: &mut TValue) -> ArrayViewMutD<'_, f32> {
         match x {
             TValue::Var(x) => {
                 ArrayViewMutD::from_shape_ptr(x.shape(), x.as_ptr_unchecked::<f32>() as *mut f32)
-            },
+            }
             TValue::Const(x) => {
                 ArrayViewMutD::from_shape_ptr(x.shape(), x.as_ptr_unchecked::<f32>() as *mut f32)
-            },
+            }
         }
     }
 }

@@ -24,16 +24,16 @@ hound = "3.5"
 itertools = "0.10"
 log = { version = "0.4", features = ["std"] }
 
-ndarray = "^0.16"
+ndarray = "^0.17"
 num-complex = { version = "^0.4", features = ["serde"] }
 realfft = "^3.5"
 rust-ini = "^0.21"
 rustfft = "^6.4"
 tar = "^0.4"
-tract-core = "^0.22"
-tract-hir = "^0.22"
-tract-onnx = "^0.22"
-tract-pulse = "^0.22"
+tract-core = "^0.23"
+tract-hir = "^0.23"
+tract-onnx = "^0.23"
+tract-pulse = "^0.23"
 
 [dev-dependencies]
 rand = "^0.8"

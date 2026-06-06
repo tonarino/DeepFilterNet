@@ -9,9 +9,18 @@ license = "MIT/Apache-2.0"
 publish = false
 rust-version = "1.91"
 
+[[bin]]
+name = "deep-filter"
+path = "src/bin/deep-filter.rs"
+
+[[bin]]
+name = "enhance-wav"
+path = "src/bin/enhance_wav.rs"
+
 [dependencies]
 anyhow = "1"
 flate2 = "1"
+hound = "3.5"
 itertools = "0.10"
 log = { version = "0.4", features = ["std"] }
 

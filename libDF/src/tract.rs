@@ -172,6 +172,7 @@ impl Default for RuntimeParams {
 
 pub type TractModel = Box<dyn State>;
 
+#[derive(Clone)]
 pub struct DfTract {
     enc: TractModel,
     erb_dec: TractModel,
@@ -987,13 +988,17 @@ pub fn as_arrayview_mut_complex<'a>(
 }
 pub fn tvalue_to_array_view_mut(x: &mut TValue) -> ArrayViewMutD<'_, f32> {
     unsafe {
-        match x {
-            TValue::Var(x) => {
-                ArrayViewMutD::from_shape_ptr(x.shape(), x.as_ptr_unchecked::<f32>() as *mut f32)
-            }
-            TValue::Const(x) => {
-                ArrayViewMutD::from_shape_ptr(x.shape(), x.as_ptr_unchecked::<f32>() as *mut f32)
-            }
-        }
+        ArrayViewMutD::from_shape_ptr(x.shape(), x.as_ptr_unchecked::<f32>() as *mut f32)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn df_tract_is_send() {
+        fn is_send<T: Send>() {}
+        is_send::<DfTract>();
     }
 }

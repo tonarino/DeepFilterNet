@@ -377,7 +377,7 @@ pub fn post_filter(noisy: &[Complex32], enh: &mut [Complex32], beta: f32) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rand::distributions::{Distribution, Uniform};
+    use rand::distr::{Distribution, Uniform};
 
     fn apply_band_gain(out: &mut [Complex32], band_e: &[f32], erb_fb: &[usize]) {
         let mut bcsum = 0;
@@ -398,9 +398,9 @@ mod tests {
         let hop = n_fft / 2;
         let nb_bands = 24;
         let state = DFState::new(sr, n_fft, hop, nb_bands, 1);
-        let d = Uniform::new(-1., 1.);
+        let d = Uniform::new(-1., 1.).unwrap();
         let mut input = Vec::with_capacity(n_freqs);
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         for _ in 0..(n_freqs) {
             input.push(Complex32::new(d.sample(&mut rng), d.sample(&mut rng)))
         }

@@ -35,5 +35,9 @@ tract-hir = "^0.23.10"
 tract-onnx = "^0.23.10"
 tract-pulse = "^0.23.10"
 
+[features]
+# Embed DeepFilterNet3 as `DfParams::default_model()`.
+default-model = []
+
 [dev-dependencies]
 rand = "^0.10"

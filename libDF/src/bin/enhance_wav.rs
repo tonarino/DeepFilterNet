@@ -87,7 +87,7 @@ fn main() -> Result<()> {
         let mut writer = hound::WavWriter::create(&out_path, spec)?;
         for i in 0..n_frames {
             for ch in 0..n_ch {
-                writer.write_sample(channels[ch][i] as i16)?;
+                writer.write_sample((channels[ch][i] * 32768.0).clamp(-32768.0, 32767.0) as i16)?;
             }
         }
         writer.finalize()?;

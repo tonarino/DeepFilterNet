@@ -27,6 +27,8 @@ tract-pulse = "^0.23.10"
 [features]
 # Embed DeepFilterNet3 as `DfParams::default_model()`.
 default-model = []
+# Embed DeepFilterNet3 LL (no lookahead) as `DfParams::ll_model()`.
+ll-model = []
 
 [dev-dependencies]
 hound = "3.5"

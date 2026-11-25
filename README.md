@@ -9,6 +9,7 @@ by Hendrik Schröter, without the training, Python, LADSPA and C API code.
 ## Features
 
 - `default-model`: embeds DeepFilterNet3 as `DfParams::default_model()` (30 ms delay).
+- `ll-model`: embeds DeepFilterNet3 LL as `DfParams::ll_model()` (10 ms delay).
 
 ## License
 

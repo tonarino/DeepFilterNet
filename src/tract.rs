@@ -43,6 +43,11 @@ impl DfParams {
         Self::from_bytes(include_bytes!("../models/DeepFilterNet3_onnx.tar.gz"))
     }
 
+    #[cfg(feature = "ll-model")]
+    pub fn ll_model() -> Result<Self> {
+        Self::from_bytes(include_bytes!("../models/DeepFilterNet3_ll_onnx.tar.gz"))
+    }
+
     fn from_targz<R: Read>(f: R) -> Result<Self> {
         let tar = GzDecoder::new(f);
         let mut archive = Archive::new(tar);

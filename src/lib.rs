@@ -1,7 +1,8 @@
-use itertools::izip;
+pub use ndarray;
 pub use num_complex::Complex32;
 use realfft::{ComplexToReal, RealFftPlanner, RealToComplex};
 use std::{ops::MulAssign, sync::Arc, vec::Vec};
+use tract_core::internal::tract_itertools::izip;
 
 pub const MEAN_NORM_INIT: [f32; 2] = [-60., -90.];
 pub const UNIT_NORM_INIT: [f32; 2] = [0.001, 0.0001];

@@ -1,23 +1,33 @@
-[workspace]
-resolver = "2"
+[package]
+name = "deep_filter"
+version = "0.5.7-pre"
+authors = ["tonari & Hendrik Schröter"]
+edition = "2021"
+description = "Noise suppression using deep filtering"
+repository = "https://github.com/tonarino/DeepFilterNet"
+license = "MIT OR Apache-2.0"
+publish = false
+rust-version = "1.91"
 
-members = [
-  "libDF"
-]
+[dependencies]
+anyhow = "1"
+flate2 = "1"
+log = { version = "0.4", features = ["std"] }
 
-[profile.dev]
-opt-level = 1
-incremental = false
-lto = false
+ndarray = "^0.17"
+num-complex = "^0.4"
+realfft = "^3.5"
+rust-ini = "^0.21"
+tar = "^0.4"
+tract-core = "^0.23.10"
+tract-hir = "^0.23.10"
+tract-onnx = "^0.23.10"
+tract-pulse = "^0.23.10"
 
-[profile.release]
-debug = false
-opt-level = 3
-lto = "thin"
+[features]
+# Embed DeepFilterNet3 as `DfParams::default_model()`.
+default-model = []
 
-[profile.release-lto]
-inherits = "release"
-debug = false
-lto = "fat"
-strip = true
-panic = "abort"
+[dev-dependencies]
+hound = "3.5"
+rand = "^0.10"

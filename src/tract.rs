@@ -40,7 +40,7 @@ impl DfParams {
 
     #[cfg(feature = "default-model")]
     pub fn default_model() -> Result<Self> {
-        Self::from_bytes(include_bytes!("../../models/DeepFilterNet3_onnx.tar.gz"))
+        Self::from_bytes(include_bytes!("../models/DeepFilterNet3_onnx.tar.gz"))
     }
 
     fn from_targz<R: Read>(f: R) -> Result<Self> {
